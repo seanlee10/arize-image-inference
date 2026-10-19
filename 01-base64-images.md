@@ -1,10 +1,14 @@
-# Guide 01: Image inference with base64 images
+# Guide 1: Base64 images
 
-With this approach each dataset row contains the image itself. You don't need to host the images or manage URL expiry, and it works with every vision provider.
+[← All guides](README.md)
 
-## 1. Encode the images
+With this approach each dataset row contains the image itself. You don't need to host the images or manage URL expiry, and every vision provider accepts it.
 
-Store each image as a **data URI**: `data:image/<fmt>;base64,<data>`. Raw base64 with no prefix also works, but the data URI states the format explicitly and removes any doubt.
+**What you'll build:** a `receipts-base64` dataset, and a Playground run in which a vision model reads each receipt.
+
+## Step 1: Encode the images as data URIs
+
+Store each image as `data:image/<format>;base64,<data>`. Raw base64 without the prefix also works, but the data URI states the format explicitly.
 
 ```python
 import base64
@@ -12,16 +16,18 @@ import mimetypes
 from pathlib import Path
 
 ALLOWED = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+mimetypes.add_type("image/webp", ".webp")
 
 def to_data_uri(path: Path) -> str:
+    """Encode an image file as `data:image/<fmt>;base64,<data>`."""
     mime, _ = mimetypes.guess_type(path.name)
     if mime not in ALLOWED:
-        raise ValueError(f"{path}: {mime} is not supported (use png/jpeg/gif/webp)")
+        raise ValueError(f"{path.name}: {mime} is not supported (use png/jpeg/gif/webp)")
     b64 = base64.b64encode(path.read_bytes()).decode("ascii")
     return f"data:{mime};base64,{b64}"
 ```
 
-Optionally, shrink large images before encoding. This makes the dataset smaller and keeps you under provider limits:
+**Large photos:** resize them before encoding. That keeps the dataset small and stays under provider limits (Anthropic allows about 5 MB per image):
 
 ```python
 from io import BytesIO
@@ -35,92 +41,72 @@ def to_data_uri_resized(path: Path, max_side: int = 1568) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
 ```
 
-## 2. Create the dataset
+## Step 2: Create the dataset
 
-### Using the Python SDK (v8)
+The full script is [`examples/01_create_base64_dataset.py`](https://github.com/seanlee10/arize-image-inference/blob/main/examples/01_create_base64_dataset.py). Its core:
 
 ```python
-import pandas as pd
+import os
 from arize import ArizeClient
 
-client = ArizeClient(api_key="YOUR_API_KEY")
-
-image_dir = Path("./images")
-rows = [
+examples = [
     {
-        "image": to_data_uri(p),
-        "file_name": p.name,
-        "expected_label": "...",  # optional ground truth for evals
+        "image": to_data_uri(images_dir / row["file_name"]),  # the image column
+        "file_name": row["file_name"],
+        "expected_merchant": row["merchant"],                  # ground truth for scoring
+        "expected_date": row["date"],
+        "expected_total": row["total"],
     }
-    for p in sorted(image_dir.glob("*"))
-    if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+    for row in ground_truth
 ]
 
+client = ArizeClient(api_key=os.environ["ARIZE_API_KEY"])
 dataset = client.datasets.create(
-    name="product-photos-base64",
-    space="YOUR_SPACE_ID_OR_NAME",
-    examples=pd.DataFrame(rows),
-)
-print(dataset.id)
-```
-
-### Using a CSV upload in the UI
-
-Write the same DataFrame out with `df.to_csv("images.csv", index=False)`, then go to **Datasets → New Dataset → Upload CSV**. Base64 makes CSVs large very quickly, so for more than a few hundred images use the SDK instead. The SDK streams large uploads.
-
-Once the dataset is created, the `image` column shows thumbnails in the dataset table. That confirms Arize recognized the values as images.
-
-## 3. Run it in the Prompt Playground
-
-1. Open **Prompt Playground** and choose a vision-capable model.
-2. Load the dataset with **Dataset → `product-photos-base64`**.
-3. Write the **user** message with the image variable on its own line:
-
-   ```
-   {{image}}
-   Classify this product photo as one of: ok, damaged, wrong_item.
-   Respond with only the label.
-   ```
-
-   If the template uses f-string format, write `{image}` instead.
-4. Click **Run**. Each row's image is sent to the model as an image, and the `{{image}}` text is removed from the prompt.
-
-## 4. Run it as an experiment
-
-Choose **Run on dataset** in the playground to save the run as an experiment, so you can compare models or prompts side by side.
-
-Alternatively, run it from code. The task function receives the dataset row, so you build the multimodal message yourself:
-
-```python
-from openai import OpenAI
-
-oai = OpenAI()
-
-def task(dataset_row) -> str:
-    resp = oai.chat.completions.create(
-        model="gpt-4.1",
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": "Classify this product photo as ok, damaged, or wrong_item."},
-                {"type": "image_url", "image_url": {"url": dataset_row["image"]}},
-            ],
-        }],
-    )
-    return resp.choices[0].message.content
-
-client.experiments.run(
-    name="gpt-4.1-classifier",
-    dataset=dataset.id,
-    task=task,
+    name="receipts-base64",
+    space=os.environ["ARIZE_SPACE_ID"],
+    examples=examples,          # a list of dicts or a pandas DataFrame
 )
 ```
 
-## Troubleshooting
+```console
+$ python 01_create_base64_dataset.py
+Created dataset 'receipts-base64' (RGF0YXNldDozNzA2NDU6NHQ0bw==) with 6 examples
+```
 
-| Symptom | Cause |
-|---|---|
-| The model answers "I don't see an image", or its reply quotes base64 text | The value wasn't recognized as an image. Check the MIME type (png/jpeg/gif/webp only), and check that the string has no stray quotes or newlines inside it. |
-| No thumbnail in the dataset table | Same cause as above: Arize doesn't recognize the value as an image. |
-| Provider 400 error saying the image is too large | Resize the image. Anthropic's limit is about 5 MB per image, and raw base64 over about 10 MB of text is ignored. |
-| The image is ignored when it is in a system message | Images are only taken from **user** messages. |
+Open the dataset under **Datasets**. Thumbnails in the `image` column confirm that Arize recognized the values as images. Hover over a cell to load its thumbnail.
+
+![receipts-base64 dataset with image thumbnails](assets/screenshots/01-dataset-base64.png)
+
+Click a row to see the raw data URI with the image rendered below it:
+
+![Example detail showing the data URI and the rendered receipt](assets/screenshots/02-example-base64.png)
+
+**Using a CSV upload instead:** write the same rows with `pandas.DataFrame(examples).to_csv("receipts.csv", index=False)` and upload the file under **Datasets → New Dataset**. Base64 makes CSVs large quickly, so for more than a few hundred images use the SDK, which streams large uploads.
+
+## Step 3: Run it in the Prompt Playground
+
+1. Go to **Playground → New Playground → Prompt Playground**.
+2. **Choose a vision-capable model.** These screenshots use `claude-sonnet-5-5` through an Anthropic AI integration. GPT-4.1 / 4o / 5 and Gemini also work.
+3. **Write the user message** with the image variable on its own line:
+
+   ```
+   {image}
+   Extract the merchant name, the date and the grand total from this receipt. Respond with JSON only, using the keys merchant, date (YYYY-MM-DD) and total (a number).
+   ```
+
+   This playground uses f-string variables (`{image}`). With mustache formatting, write `{{image}}`. Avoid literal `{ }` in the instructions: in f-string mode they are parsed as variables. That's why the prompt above describes the JSON keys in words.
+4. **Select the dataset** in the picker at the bottom (`receipts-base64`). Each row's `image` variable gets a preview, which means Arize will send it as an image:
+
+   ![Playground with the dataset loaded and image previews](assets/screenshots/04-playground-setup.png)
+
+5. **Click Run.** Every row is sent to the model with its image:
+
+   ![Playground results: the model read each receipt correctly](assets/screenshots/05-playground-results-base64.png)
+
+Running the Playground over a dataset also saves the run as an **experiment** on that dataset (**Datasets → receipts-base64 → Experiment Analysis**). You can compare it there with later runs that use a different model or prompt.
+
+## Next
+
+- [Guide 2](02-url-images.md): the same workflow with image URLs
+- [Guide 3](03-images-in-evaluators.md): grading the outputs with an evaluator that looks at the image
+- [Guide 4](04-experiments-from-code.md): running this from Python

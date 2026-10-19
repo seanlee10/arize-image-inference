@@ -1,51 +1,71 @@
 # Image Inference in Arize AX
 
-These guides cover running a vision-capable LLM over images stored in an Arize dataset, using the Prompt Playground and Experiments.
+These guides show how to run a vision-capable LLM over images stored in an Arize dataset. You can do it in the **Prompt Playground**, as a saved **experiment**, or with an **LLM-as-judge evaluator** that looks at the image.
 
-| Guide | Use it when |
-|---|---|
-| [01 — Base64 images](01-base64-images.md) | The images are local files or private, and you want each dataset row to carry its own image data. |
-| [02 — URL images](02-url-images.md) | The images are already hosted at an https URL (public, or a presigned GCS/S3 link). |
-| [03 — Images in evaluators](03-images-in-evaluators.md) | An LLM-as-judge evaluator needs to look at the image. Evaluators use a different input format. |
+Every screenshot and code sample comes from a working run against a real Arize space. The sample data is six synthetic receipts, and the model is asked to extract the merchant, the date and the total from each one. The [`examples/`](https://github.com/seanlee10/arize-image-inference/tree/main/examples) folder contains everything needed to reproduce it.
+
+![Playground running a vision prompt over a dataset of receipt images](assets/screenshots/05-playground-results-base64.png)
+
+## Guides
+
+| # | Guide | What it covers |
+|---|---|---|
+| 1 | [Base64 images](01-base64-images.md) | Encoding local or private images into the dataset, then running them in the Playground |
+| 2 | [URL images](02-url-images.md) | https image links, presigned GCS/S3 URLs, and why `gs://` / `s3://` don't work |
+| 3 | [Images in evaluators](03-images-in-evaluators.md) | LLM-as-judge evaluators that look at the image, which need a different column format |
+| 4 | [Experiments from code](04-experiments-from-code.md) | Running image experiments from Python, either server-side through an Arize AI integration or locally with your own task |
+| 5 | [Troubleshooting](05-troubleshooting.md) | Symptoms, causes and fixes |
 
 ## How it works
 
-Arize has no separate "image" field. **You store the image as an ordinary string column in the dataset and reference it with a normal template variable** in a **user** message:
+Arize has no separate "image" field. You store the image as an ordinary string column in the dataset and reference it with a template variable in a **user** message:
 
 ```
-{{image}}
-Describe the product in this photo and list any visible defects.
+{image}
+Extract the merchant name, the date and the grand total from this receipt.
 ```
 
-When the playground or an experiment fills in the template, Arize checks each value. If the value looks like an image, Arize removes it from the text and sends it to the model as an image instead. Otherwise the value stays as text.
+When the prompt runs, Arize checks each variable's value. If the value looks like an image, Arize removes it from the text and sends it to the model as an image instead. Otherwise the value stays as text.
 
 The value counts as an image if it has one of these two forms:
 
 | Form | Example |
 |---|---|
-| **Base64** | `data:image/png;base64,iVBORw0KGgo...` (a data URI), or raw base64 with no prefix (Arize identifies the format from the file's first bytes) |
-| **https URL** | `https://cdn.example.com/items/123.jpg` or `https://storage.googleapis.com/bucket/x.png?X-Goog-Signature=...` |
+| **Base64** | `data:image/png;base64,iVBORw0KGgo...`, or raw base64 with no prefix (Arize identifies the format from the file's first bytes) |
+| **https URL** | `https://cdn.example.com/receipts/123.png` or a presigned `https://storage.googleapis.com/...png?X-Goog-Signature=...` |
 
-Markdown image syntax (`![alt](https://.../x.png)`) also works.
+![Dataset variables recognized as images in the Playground](assets/screenshots/04-playground-setup.png)
 
-## Rules that trip people up
+## Rules to know before you start
 
-1. **The only formats are JPG/JPEG, PNG, GIF and WebP.** SVG, BMP, TIFF and ICO are deliberately rejected, because model providers return 400 errors for them. (The public docs page still lists SVG. It is out of date.)
-2. **`gs://` and `s3://` URLs do not work for inference.** The playground and experiments treat them as plain text, so the model receives the literal string `gs://...` and never sees an image. Convert them to presigned https URLs ([guide 02](02-url-images.md#private-buckets-gcs--s3)) or to base64 ([guide 01](01-base64-images.md)). The public docs page lists `gs://` and `s3://` as supported. That is wrong for this flow.
-3. **An https URL must end in an image extension** (`.jpg`, `.jpeg`, `.png`, `.gif` or `.webp`). A query string after the extension is allowed. A URL with no extension, such as `https://cdn.example.com/img/12345`, is sent as text.
-4. **Put the image variable in a user message, separated from other text by whitespace.** Images are only extracted from user messages. In experiments, the image value must also be its own whitespace-separated token. `{{image}}` on its own line is the safest choice.
-5. **The model must support vision.** Examples are GPT-4o / 4.1 / 5, Claude Sonnet / Opus / Haiku 4.x, and Gemini.
-6. **Bedrock with IAM or access-key auth running a Claude model only accepts base64 PNG or JPEG.** It rejects https URLs with "Invalid image URL format for Anthropic model. Please use a base64 data URL instead". Use [guide 01](01-base64-images.md) for that setup.
-7. **Raw base64 is limited to about 10 MB of text** (roughly 7.5 MB of image). Model providers have their own lower limits. For example, Anthropic allows about 5 MB per image. Resize large images first.
+1. **The only formats are JPG/JPEG, PNG, GIF and WebP.** SVG, BMP, TIFF and ICO are rejected on purpose.
+2. **`gs://` and `s3://` URIs are sent as text.** The model never sees an image, as shown in [guide 2](02-url-images.md#gs-and-s3-uris-are-not-images). Convert them to presigned https URLs or to base64.
+3. **An https URL's path must end in an image extension** (`.png`, `.jpg`, `.jpeg`, `.gif` or `.webp`). A query string after the extension is fine.
+4. **Use a vision-capable model.** A text-only model such as `gpt-oss-20b` fails with a provider error ([guide 5](05-troubleshooting.md#text-only-model)).
+5. **Put the image variable in a user message, on its own line.**
+6. **Evaluators need the image as a JSON node:** `{"image.url": "<url or data URI>"}`. A bare URL stays text ([guide 3](03-images-in-evaluators.md)).
 
-## Choosing between base64 and a URL
+## Base64 or URL?
 
 | | Base64 | https URL |
 |---|---|---|
-| Works with private images | ✅ The data is in the row | ⚠️ Needs a presigned URL, which expires |
+| Private images | ✅ The data is in the row | ⚠️ Needs a presigned URL, which expires |
 | Dataset size | Large: about 1.33× the image bytes per row | Small |
-| Thumbnails in the dataset table | ✅ | ✅ |
-| Bedrock Claude with IAM auth | ✅ PNG and JPEG only | ❌ |
-| Re-run the experiment months later | ✅ | Only if the URL still works |
+| Thumbnails in Arize | ✅ | ✅ |
+| Re-run months later | ✅ | Only if the URL still works |
 
-Start with **base64** if the images are private or there are fewer than a few thousand of them. Use **https URLs** if the images are already on a public or CDN host.
+Start with **base64** for private images or up to a few thousand rows. Use **URLs** when the images already sit on a public or CDN host.
+
+## Quick start
+
+```bash
+git clone https://github.com/seanlee10/arize-image-inference && cd arize-image-inference/examples
+pip install -r requirements.txt
+export ARIZE_API_KEY=...  ARIZE_SPACE_ID=...
+
+python make_sample_images.py          # 6 synthetic receipts + ground_truth.csv
+python 01_create_base64_dataset.py    # dataset "receipts-base64"
+python 02_create_url_dataset.py       # dataset "receipts-urls"
+python 03_run_experiment_server_side.py --dataset receipts-urls \
+    --integration "<your AI integration name>" --model claude-sonnet-5-5
+```

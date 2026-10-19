@@ -1,104 +1,100 @@
-# Guide 02: Image inference with URL images
+# Guide 2: URL images
 
-With this approach each dataset row stores an **https link** to the image. The dataset stays small, but the model provider (or Arize) has to be able to download the image when the prompt runs.
+[← All guides](README.md)
+
+With this approach each dataset row stores an **https link** to the image. The dataset stays small, but the link has to work when the prompt runs.
+
+**What you'll build:** a `receipts-urls` dataset that points at images hosted on this site, and a Playground run over it.
 
 ## URL requirements
 
-- It must use `https://`. The host must be reachable from the public internet. Private IPs and VPN-only hosts are blocked.
-- The **path must end in** `.jpg`, `.jpeg`, `.png`, `.gif` or `.webp`. A query string after the extension is allowed.
-  - ✅ `https://cdn.example.com/items/123.jpg`
-  - ✅ `https://bucket.s3.amazonaws.com/a/b.png?X-Amz-Signature=...`
-  - ❌ `https://cdn.example.com/img/12345` (no extension, so it is sent as text)
-  - ❌ `gs://bucket/a.png` or `s3://bucket/a.png` (sent as text, see below)
-- The URL must still work **at the time the prompt runs**, not only when you created the dataset.
+| Rule | ✅ Works | ❌ Sent as text |
+|---|---|---|
+| Must use `https://` | `https://cdn.example.com/r/123.png` | `gs://bucket/r/123.png`, `s3://bucket/r/123.png` |
+| The path must end in `.jpg`, `.jpeg`, `.png`, `.gif` or `.webp` | `https://bucket.s3.amazonaws.com/r/1.jpg?X-Amz-Signature=...` | `https://cdn.example.com/img/12345` |
+| Must be publicly reachable | Public CDN, presigned URL | VPN-only host, private IP |
+| Must still be valid at run time | Presigned URL with a long enough expiry | An expired presigned URL |
 
-## Public images
+## Step 1: Create the dataset
 
-If the images are already public, put the URLs in a column:
+The full script is [`examples/02_create_url_dataset.py`](https://github.com/seanlee10/arize-image-inference/blob/main/examples/02_create_url_dataset.py). It points at the sample receipts on this repo's Pages site by default. Use `--base-url` to point it at your own host.
 
 ```python
-import pandas as pd
-from arize import ArizeClient
+import json
 
-client = ArizeClient(api_key="YOUR_API_KEY")
+BASE = "https://seanlee10.github.io/arize-image-inference/examples/images"
 
-df = pd.DataFrame({
-    "image": [
-        "https://cdn.example.com/items/123.jpg",
-        "https://cdn.example.com/items/456.png",
-    ],
-    "expected_label": ["ok", "damaged"],
-})
+examples = []
+for row in ground_truth:
+    url = f"{BASE}/{row['file_name']}"
+    examples.append({
+        "image": url,                                    # used by the Playground and experiments
+        "image_node": json.dumps({"image.url": url}),    # used by evaluators (guide 3)
+        "file_name": row["file_name"],
+        "expected_merchant": row["merchant"],
+        "expected_date": row["date"],
+        "expected_total": row["total"],
+    })
 
-dataset = client.datasets.create(
-    name="product-photos-urls",
-    space="YOUR_SPACE_ID_OR_NAME",
-    examples=df,
-)
+client.datasets.create(name="receipts-urls", space=os.environ["ARIZE_SPACE_ID"], examples=examples)
 ```
 
-A CSV upload in the UI works the same way.
+Arize fetches the URLs to render thumbnails in the dataset view:
 
-## Private buckets (GCS / S3)
+![receipts-urls dataset with thumbnails and the image_node column](assets/screenshots/03-dataset-urls.png)
 
-**Do not store `gs://` or `s3://` URIs in the dataset for inference.** Arize does not sign customer bucket URIs in the playground or experiments, so the model receives the literal text `gs://...`. Choose one of these instead:
+## Step 2: Run it in the Playground
 
-- **Presigned https URLs.** These are simple, but they expire. Choose an expiry long enough for every run you plan, and re-sign the URLs for later re-runs.
-- **Base64.** Download the images and follow [guide 01](01-base64-images.md). Use this when you need re-runs to keep working.
+These are the same steps as [guide 1, step 3](01-base64-images.md#step-3-run-it-in-the-prompt-playground). Select `receipts-urls` instead and click **Run**:
 
-### GCS: V4 signed URLs
+![Playground results over URL images](assets/screenshots/06-playground-results-urls.png)
+
+## `gs://` and `s3://` URIs are not images
+
+Arize does not sign bucket URIs in the Playground or in experiments, so the model receives the literal text. In this run the `image` variable was set to `gs://my-company-receipts/2026/receipt_01.png`. The prompt still worked, but the model only received the string:
+
+![The model reports that it cannot open a gs:// link](assets/screenshots/07-gs-uri-not-supported.png)
+
+Convert the URIs first, using either of these:
+
+- **Presigned https URLs** (below). This is quick, but the URLs expire, so re-sign them for later re-runs.
+- **Base64** ([guide 1](01-base64-images.md)). Use this when re-runs need to keep working.
+
+### Presigning GCS and S3 objects
+
+The script is [`examples/sign_urls.py`](https://github.com/seanlee10/arize-image-inference/blob/main/examples/sign_urls.py):
 
 ```python
 from datetime import timedelta
-from google.cloud import storage
 
-gcs = storage.Client()
+SEVEN_DAYS = 7 * 24 * 3600  # the maximum for both GCS V4 and S3 SigV4
 
-def sign_gcs(uri: str, hours: int = 24 * 7) -> str:
+def sign_gcs(uri: str, seconds: int = SEVEN_DAYS) -> str:
+    from google.cloud import storage
     bucket, blob = uri.removeprefix("gs://").split("/", 1)
-    return gcs.bucket(bucket).blob(blob).generate_signed_url(
-        version="v4", expiration=timedelta(hours=hours), method="GET"
-    )
+    return (storage.Client().bucket(bucket).blob(blob)
+            .generate_signed_url(version="v4", expiration=timedelta(seconds=seconds), method="GET"))
 
-df["image"] = df["gcs_uri"].map(sign_gcs)
-```
-
-The longest expiry for a V4 signed URL is 7 days.
-
-### S3: presigned URLs
-
-```python
-import boto3
-
-s3 = boto3.client("s3")
-
-def sign_s3(uri: str, seconds: int = 7 * 24 * 3600) -> str:
+def sign_s3(uri: str, seconds: int = SEVEN_DAYS) -> str:
+    import boto3
     bucket, key = uri.removeprefix("s3://").split("/", 1)
-    return s3.generate_presigned_url(
-        "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=seconds
-    )
+    return boto3.client("s3").generate_presigned_url(
+        "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=seconds)
 
-df["image"] = df["s3_uri"].map(sign_s3)
+df["image"] = df["gcs_uri"].map(sign_gcs)   # or df["s3_uri"].map(sign_s3)
 ```
 
-Credentials from an STS role or an SSO session cap a presigned URL at that session's lifetime, which can be much shorter than 7 days. Sign with an IAM user or a long-lived role if you need the full 7 days.
+```console
+$ python sign_urls.py gs://my-bucket/receipts/receipt_01.png
+https://storage.googleapis.com/my-bucket/receipts/receipt_01.png?X-Goog-Algorithm=...&X-Goog-Signature=...
+```
 
-Both signers keep the object key, including its `.png`/`.jpg` extension, in the URL path. That means the extension rule above still holds.
+Both signers keep the object key, including its `.png`/`.jpg` extension, in the URL path, so the extension rule still holds.
 
-## Running it
-
-Running is the same as with base64 ([guide 01](01-base64-images.md), steps 3–4). Load the dataset in the Prompt Playground and put `{{image}}` on its own line in a **user** message.
+S3 URLs signed with STS or SSO session credentials expire when that session does, which can be well before the 7 days you asked for. Sign with long-lived credentials if you need the full 7 days.
 
 ## Provider notes
 
-- Most providers (OpenAI, Anthropic, Gemini/Vertex, and Bedrock with bearer-token auth) accept https image URLs.
-- With **Bedrock using IAM or access-key auth on a Claude model**, https URLs fail with "Please use a base64 data URL instead". Use [guide 01](01-base64-images.md) for that setup.
-- With **Azure OpenAI and custom OpenAI-compatible endpoints**, the provider fetches the URL itself. The image host must allow the provider's servers to download it.
-
-## Troubleshooting
-
-| Symptom | Cause |
-|---|---|
-| The model replies about a URL string instead of describing an image | The URL has no image extension, or it is a `gs://`/`s3://` URI. |
-| Provider error "could not download image" or 403 | The presigned URL expired, or the host blocks outside requests. |
-| Worked yesterday, fails today | The signed URL expired. Re-sign the URLs, or switch to base64. |
+- **OpenAI, Anthropic, Gemini/Vertex, and Bedrock with bearer-token auth** accept https image URLs.
+- **Bedrock with IAM or access-key auth running a Claude model** accepts only base64 PNG or JPEG. Use [guide 1](01-base64-images.md) there.
+- **Azure OpenAI and other OpenAI-compatible endpoints** fetch the URL themselves. The host must allow the provider's servers to download it.
