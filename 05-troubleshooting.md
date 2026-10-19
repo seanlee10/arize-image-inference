@@ -28,7 +28,7 @@
 
 ![LLM Provider Error: messages[0].content must be a string](assets/screenshots/09-text-only-model-error.png)
 
-Choose a model that supports image input, for example Claude Sonnet / Opus / Haiku 4.x and later, GPT-4o / 4.1 / 5, Gemini, or Llama 4 Scout/Maverick on Groq. If your AI integration lists models explicitly, add the vision model to the integration's model list first.
+Choose a model that supports image input, for example Claude Sonnet, Opus or Haiku (4.x and later) through an Anthropic AI integration. If your AI integration lists models explicitly, add the vision model to the integration's model list first.
 
 ## Checking what Arize will send
 

@@ -88,8 +88,6 @@ def task(dataset_row) -> str:
     return msg.content[0].text
 ```
 
-With the OpenAI SDK, both forms go in the same place: `{"type": "image_url", "image_url": {"url": dataset_row["image"]}}`.
-
 Evaluators receive arguments by parameter name (`output`, `dataset_row`, `input`, `metadata`, ...) and return an `EvaluationResult`:
 
 ```python

@@ -66,6 +66,14 @@ export ARIZE_API_KEY=...  ARIZE_SPACE_ID=...
 python make_sample_images.py          # 6 synthetic receipts + ground_truth.csv
 python 01_create_base64_dataset.py    # dataset "receipts-base64"
 python 02_create_url_dataset.py       # dataset "receipts-urls"
+
+# Claude via your Arize Anthropic AI integration (no local key needed)
 python 03_run_experiment_server_side.py --dataset receipts-urls \
-    --integration "<your AI integration name>" --model claude-sonnet-5-5
+    --integration "<your Anthropic integration name>" --model claude-sonnet-5-5
+
+# Claude via the Anthropic API directly, with code evaluators
+export ANTHROPIC_API_KEY=...
+python 04_run_experiment_local.py --dataset receipts-base64
 ```
+
+All examples use Anthropic's Claude, either through an Arize AI integration or through the Anthropic Python SDK.

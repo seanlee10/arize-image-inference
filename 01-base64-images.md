@@ -86,7 +86,7 @@ Click a row to see the raw data URI with the image rendered below it:
 ## Step 3: Run it in the Prompt Playground
 
 1. Go to **Playground → New Playground → Prompt Playground**.
-2. **Choose a vision-capable model.** These screenshots use `claude-sonnet-5-5` through an Anthropic AI integration. GPT-4.1 / 4o / 5 and Gemini also work.
+2. **Choose a vision-capable model.** These screenshots use `claude-sonnet-5-5` through an Anthropic AI integration. Any Claude model from 4.x onward accepts images.
 3. **Write the user message** with the image variable on its own line:
 
    ```
