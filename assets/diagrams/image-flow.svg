@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 760" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title>How an image in a dataset reaches the model's context</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+  </defs>
+  <style>
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; fill: #1f2328; }
+    .t { font-size: 14px; font-weight: 700; fill: #1f2328; }
+    .note { font-size: 13px; fill: #57606a; }
+    .step { font-size: 12px; font-weight: 700; fill: #ffffff; }
+    .edge { stroke: #57606a; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+  </style>
+  <rect width="960" height="760" fill="#ffffff"/>
+
+  <!-- 1. inputs -->
+  <rect x="40" y="20" width="400" height="124" rx="8" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="56" y="46" class="t">Dataset row</text>
+  <text x="56" y="74" class="mono">image          = "https://…/receipt_01.png"</text>
+  <text x="56" y="96" class="mono">expected_total = "14.58"</text>
+  <text x="56" y="126" class="note">One run per row; each column becomes a variable.</text>
+
+  <rect x="520" y="20" width="400" height="124" rx="8" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="536" y="46" class="t">Prompt template — user message</text>
+  <text x="536" y="74" class="mono" fill="#1a7f37">{image}</text>
+  <text x="536" y="96" class="mono">Extract the merchant name, the date</text>
+  <text x="536" y="114" class="mono">and the grand total from this receipt…</text>
+  <text x="536" y="134" class="note">Put {image} on its own line.</text>
+
+  <path d="M240,144 L240,170 L480,170" fill="none" stroke="#57606a" stroke-width="1.6"/>
+  <path d="M720,144 L720,170 L480,170 L480,192" class="edge"/>
+
+  <!-- 2. fill -->
+  <rect x="230" y="196" width="500" height="58" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+  <circle cx="254" cy="225" r="12" fill="#0969da"/><text x="250" y="229" class="step">1</text>
+  <text x="276" y="221" class="t">Arize fills {image} with the row's value</text>
+  <text x="276" y="242" class="note">Playground, experiments and the server-side task runner all do this.</text>
+
+  <path d="M480,254 L480,282" class="edge"/>
+
+  <!-- 3. check -->
+  <rect x="150" y="286" width="660" height="132" rx="8" fill="#fff8c5" stroke="#d4a72c"/>
+  <circle cx="174" cy="314" r="12" fill="#0969da"/><text x="170" y="318" class="step">2</text>
+  <text x="196" y="310" class="t">Does the value look like an image?</text>
+  <text x="196" y="336" class="mono">data:image/(png|jpeg|gif|webp);base64,…</text>
+  <text x="196" y="356" class="mono">raw base64 whose bytes are PNG / JPEG / GIF / WebP</text>
+  <text x="196" y="376" class="mono">https://…/name.(png|jpg|jpeg|gif|webp)[?query]</text>
+  <text x="196" y="402" class="note">Anything else — gs://, s3://, a URL without an image extension — is just text.</text>
+
+  <path d="M330,418 L330,446 L250,446 L250,470" class="edge"/>
+  <text x="262" y="440" font-size="13" font-weight="700" fill="#1a7f37">yes</text>
+  <path d="M630,418 L630,446 L710,446 L710,470" class="edge"/>
+  <text x="642" y="440" font-size="13" font-weight="700" fill="#cf222e">no</text>
+
+  <!-- 4a. image part -->
+  <rect x="40" y="474" width="420" height="200" rx="8" fill="#dafbe1" stroke="#4ac26b"/>
+  <circle cx="64" cy="500" r="12" fill="#0969da"/><text x="60" y="504" class="step">3</text>
+  <text x="86" y="505" class="t">Removed from the text, sent as an image</text>
+  <text x="60" y="534" class="note">Request to the model (shape simplified):</text>
+  <text x="60" y="558" class="mono">{ role: "user", content: [</text>
+  <text x="76" y="578" class="mono" fill="#1a7f37">{ type: "image",  ← URL or base64 }</text>
+  <text x="76" y="598" class="mono">{ type: "text",</text>
+  <text x="92" y="618" class="mono">"Extract the merchant name…" }</text>
+  <text x="60" y="638" class="mono">]}</text>
+  <text x="60" y="662" font-size="13" font-weight="700" fill="#1a7f37">✓ The model sees the receipt</text>
+
+  <!-- 4b. text -->
+  <rect x="500" y="474" width="420" height="200" rx="8" fill="#ffebe9" stroke="#ff8182"/>
+  <circle cx="524" cy="500" r="12" fill="#0969da"/><text x="520" y="504" class="step">3</text>
+  <text x="546" y="505" class="t">Left in the text as a string</text>
+  <text x="520" y="534" class="note">Request to the model (shape simplified):</text>
+  <text x="520" y="558" class="mono">{ role: "user", content: [</text>
+  <text x="536" y="578" class="mono">{ type: "text",</text>
+  <text x="552" y="598" class="mono" fill="#cf222e">"gs://bkt/receipt_01.png</text>
+  <text x="552" y="618" class="mono">Extract the merchant name…" }</text>
+  <text x="520" y="638" class="mono">]}</text>
+  <text x="520" y="662" font-size="13" font-weight="700" fill="#cf222e">✗ "I can't open gs:// links…"</text>
+
+  <!-- footer -->
+  <rect x="40" y="698" width="880" height="44" rx="8" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="56" y="725" class="note">Images are only taken from user messages. If the model has no image input (e.g. gpt-oss-20b), the provider rejects the request.</text>
+</svg>

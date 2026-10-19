@@ -11,6 +11,8 @@ Evaluators recognize images differently from the Playground and experiments:
 
 Evaluators work this way on purpose. Many evals legitimately classify URLs as text (for example, "is this link phishing?"), so an evaluator only switches to vision when the data explicitly marks something as an image.
 
+![Evaluator flow: {img} mapped to image_node ({"image.url": ...}) is sent to the judge as an image (6/6 correct); {img} mapped to the bare image URL is sent as text (6/6 no_image)](assets/diagrams/evaluator-flow.svg)
+
 **What you'll build:** an evaluator in which Claude looks at each receipt and checks the extracted total against it.
 
 ## Step 1: Add an image-node column to the dataset

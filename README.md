@@ -27,12 +27,15 @@ Extract the merchant name, the date and the grand total from this receipt.
 
 When the prompt runs, Arize checks each variable's value. If the value looks like an image, Arize removes it from the text and sends it to the model as an image instead. Otherwise the value stays as text.
 
-The value counts as an image if it has one of these two forms:
+### What the dataset looks like
 
-| Form | Example |
-|---|---|
-| **Base64** | `data:image/png;base64,iVBORw0KGgo...`, or raw base64 with no prefix (Arize identifies the format from the file's first bytes) |
-| **https URL** | `https://cdn.example.com/receipts/123.png` or a presigned `https://storage.googleapis.com/...png?X-Goog-Signature=...` |
+![Dataset anatomy: an image column whose values are base64 data URIs, https URLs or presigned URLs (sent as images) or gs:// URIs (sent as text); an image_node column for evaluators; expected_* columns for scoring](assets/diagrams/dataset-anatomy.svg)
+
+### How the image reaches the model's context
+
+![Flow: the dataset row and the prompt template are combined; Arize fills {image}, checks whether the value looks like an image, and either sends it as an image part next to the text or leaves it in the text as a string](assets/diagrams/image-flow.svg)
+
+This is what step 2 looks like in the Playground. Every variable that will be sent as an image shows a thumbnail:
 
 ![Dataset variables recognized as images in the Playground](assets/screenshots/04-playground-setup.png)
 

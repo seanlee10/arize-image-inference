@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 430" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title>Anatomy of an image dataset in Arize</title>
+  <style>
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; fill: #1f2328; }
+    .hdr { font-size: 13px; font-weight: 600; fill: #1f2328; }
+    .note { font-size: 13px; fill: #57606a; }
+    .ok { font-size: 12.5px; font-weight: 600; fill: #1a7f37; }
+    .bad { font-size: 12.5px; font-weight: 600; fill: #cf222e; }
+    .lbl { font-size: 13px; font-weight: 600; }
+  </style>
+  <rect width="960" height="430" fill="#ffffff"/>
+
+  <text x="20" y="28" font-size="16" font-weight="700" fill="#1f2328">A dataset row = ordinary string columns</text>
+  <text x="20" y="48" class="note">Arize has no "image" column type. The image is just a string value, and its format decides how Arize treats it.</text>
+
+  <!-- table frame -->
+  <rect x="20" y="66" width="920" height="206" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <rect x="20" y="66" width="920" height="34" rx="6" fill="#f6f8fa" stroke="#d0d7de"/>
+  <line x1="20" y1="100" x2="940" y2="100" stroke="#d0d7de"/>
+  <line x1="470" y1="66" x2="470" y2="272" stroke="#d0d7de"/>
+  <line x1="600" y1="66" x2="600" y2="272" stroke="#d0d7de"/>
+  <line x1="822" y1="66" x2="822" y2="272" stroke="#d0d7de"/>
+
+  <text x="34" y="88" class="hdr">image</text>
+  <text x="484" y="88" class="hdr">Treated as</text>
+  <text x="614" y="88" class="hdr">image_node</text>
+  <text x="834" y="88" class="hdr">expected_total</text>
+
+  <!-- rows -->
+  <g>
+    <line x1="20" y1="143" x2="940" y2="143" stroke="#eaeef2"/>
+    <line x1="20" y1="186" x2="940" y2="186" stroke="#eaeef2"/>
+    <line x1="20" y1="229" x2="940" y2="229" stroke="#eaeef2"/>
+
+    <text x="34" y="119" class="mono">data:image/png;base64,iVBORw0KGgoAAAANSUhEUg…</text>
+    <text x="34" y="135" class="note" font-size="11.5">base64 data URI (or raw base64 without the prefix)</text>
+    <text x="484" y="127" class="ok">✓ image</text>
+    <text x="614" y="127" class="mono">{"image.url": "data:…"}</text>
+    <text x="834" y="127" class="mono">14.58</text>
+
+    <text x="34" y="162" class="mono">https://cdn.example.com/receipts/02.jpg</text>
+    <text x="34" y="178" class="note" font-size="11.5">public https URL ending in .png .jpg .jpeg .gif .webp</text>
+    <text x="484" y="170" class="ok">✓ image</text>
+    <text x="614" y="170" class="mono">{"image.url": "https…"}</text>
+    <text x="834" y="170" class="mono">37.51</text>
+
+    <text x="34" y="205" class="mono">https://storage.googleapis.com/bkt/03.png?X-Goog-Sig…</text>
+    <text x="34" y="221" class="note" font-size="11.5">presigned GCS / S3 URL (private bucket, expires in ≤ 7 days)</text>
+    <text x="484" y="213" class="ok">✓ image</text>
+    <text x="614" y="213" class="mono">{"image.url": "https…"}</text>
+    <text x="834" y="213" class="mono">21.34</text>
+
+    <rect x="21" y="230" width="918" height="41" fill="#fff8f8"/>
+    <text x="34" y="248" class="mono">gs://bkt/receipts/04.png</text>
+    <text x="34" y="264" class="note" font-size="11.5">raw bucket URI (gs://, s3://), or a URL with no image extension</text>
+    <text x="484" y="256" class="bad">✗ plain text</text>
+    <text x="614" y="256" class="mono" fill="#8c959f">—</text>
+    <text x="834" y="256" class="mono">22.13</text>
+  </g>
+
+  <!-- who reads which column -->
+  <g>
+    <rect x="20" y="296" width="296" height="112" rx="8" fill="#ddf4ff" stroke="#54aeff"/>
+    <text x="36" y="322" class="lbl" fill="#0969da">image</text>
+    <text x="36" y="344" class="note">Read by the Playground and experiments</text>
+    <text x="36" y="364" class="note">through a template variable:</text>
+    <text x="36" y="390" class="mono">{image}  /  {{image}}</text>
+
+    <rect x="332" y="296" width="296" height="112" rx="8" fill="#fbefff" stroke="#c297ff"/>
+    <text x="348" y="322" class="lbl" fill="#8250df">image_node</text>
+    <text x="348" y="344" class="note">Read by LLM-as-judge evaluators.</text>
+    <text x="348" y="364" class="note">Only this JSON shape becomes an image;</text>
+    <text x="348" y="384" class="note">a bare URL stays text (guide 3).</text>
+
+    <rect x="644" y="296" width="296" height="112" rx="8" fill="#dafbe1" stroke="#4ac26b"/>
+    <text x="660" y="322" class="lbl" fill="#1a7f37">expected_*</text>
+    <text x="660" y="344" class="note">Ground truth (total, merchant, date)</text>
+    <text x="660" y="364" class="note">used by code evaluators to score</text>
+    <text x="660" y="384" class="note">the model's answer (guide 4).</text>
+  </g>
+</svg>

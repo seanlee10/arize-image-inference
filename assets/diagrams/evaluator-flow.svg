@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title>How an LLM-as-judge evaluator decides whether a variable is an image</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+  </defs>
+  <style>
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; fill: #1f2328; }
+    .t { font-size: 14px; font-weight: 700; fill: #1f2328; }
+    .note { font-size: 13px; fill: #57606a; }
+    .edge { stroke: #57606a; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+  </style>
+  <rect width="960" height="420" fill="#ffffff"/>
+
+  <text x="20" y="28" font-size="16" font-weight="700" fill="#1f2328">Evaluators use a stricter rule: the value must declare itself an image</text>
+  <text x="20" y="48" class="note">Template: "Receipt image: {img}  Model output: {output}  …"   Column mapping decides what {img} receives.</text>
+
+  <!-- lane A -->
+  <rect x="20" y="70" width="300" height="140" rx="8" fill="#fbefff" stroke="#c297ff"/>
+  <text x="36" y="96" class="t">{img} ← image_node</text>
+  <text x="36" y="122" class="mono">{"image.url":</text>
+  <text x="52" y="142" class="mono">"https://…/receipt_01.png"}</text>
+  <text x="36" y="172" class="note">JSON with an image.url key</text>
+  <text x="36" y="192" class="note">(or {"image": {"url": …}})</text>
+
+  <rect x="380" y="100" width="230" height="80" rx="8" fill="#fff8c5" stroke="#d4a72c"/>
+  <text x="396" y="128" class="t">Has an image.url key?</text>
+  <text x="396" y="152" class="note">The variable name and the</text>
+  <text x="396" y="170" class="note">URL itself don't matter.</text>
+
+  <rect x="670" y="70" width="270" height="140" rx="8" fill="#dafbe1" stroke="#4ac26b"/>
+  <text x="686" y="96" class="t">Sent to the judge as an image</text>
+  <text x="686" y="124" class="mono">label: correct</text>
+  <text x="686" y="148" class="note">"The receipt image is visible.</text>
+  <text x="686" y="168" class="note">It shows a TOTAL of $14.58…"</text>
+  <text x="686" y="196" font-size="13" font-weight="700" fill="#1a7f37">✓ 6 / 6 rows</text>
+
+  <path d="M320,140 L376,140" class="edge"/>
+  <path d="M610,140 L666,140" class="edge"/>
+  <text x="626" y="132" font-size="13" font-weight="700" fill="#1a7f37">yes</text>
+
+  <!-- lane B -->
+  <rect x="20" y="250" width="300" height="140" rx="8" fill="#ddf4ff" stroke="#54aeff"/>
+  <text x="36" y="276" class="t">{img} ← image</text>
+  <text x="36" y="302" class="mono">"https://…/receipt_01.png"</text>
+  <text x="36" y="332" class="note">A bare URL — works in the</text>
+  <text x="36" y="352" class="note">Playground, but here it is</text>
+  <text x="36" y="372" class="note">treated as text on purpose.</text>
+
+  <rect x="380" y="280" width="230" height="80" rx="8" fill="#fff8c5" stroke="#d4a72c"/>
+  <text x="396" y="308" class="t">Has an image.url key?</text>
+  <text x="396" y="332" class="note">No — a plain string.</text>
+
+  <rect x="670" y="250" width="270" height="140" rx="8" fill="#ffebe9" stroke="#ff8182"/>
+  <text x="686" y="276" class="t">Sent to the judge as text</text>
+  <text x="686" y="304" class="mono">label: no_image</text>
+  <text x="686" y="328" class="note">"I can't view any image… The only</text>
+  <text x="686" y="348" class="note">thing provided is a URL."</text>
+  <text x="686" y="376" font-size="13" font-weight="700" fill="#cf222e">✗ 6 / 6 rows</text>
+
+  <path d="M320,320 L376,320" class="edge"/>
+  <path d="M610,320 L666,320" class="edge"/>
+  <text x="630" y="312" font-size="13" font-weight="700" fill="#cf222e">no</text>
+</svg>
