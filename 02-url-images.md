@@ -57,41 +57,124 @@ Arize does not sign bucket URIs in the Playground or in experiments, so the mode
 
 Convert the URIs first, using either of these:
 
-- **Presigned https URLs** (below). This is quick, but the URLs expire, so re-sign them for later re-runs.
+- **Presigned https URLs** (walkthrough below). This is quick, but the URLs expire, so re-sign them for later re-runs.
 - **Base64** ([guide 1](01-base64-images.md)). Use this when re-runs need to keep working.
 
-### Presigning GCS and S3 objects
+## Walkthrough: images in a private GCS bucket
 
-The script is [`examples/sign_urls.py`](https://github.com/seanlee10/arize-image-inference/blob/main/examples/sign_urls.py):
+This was run end to end against a **private** bucket (public access prevention enforced). The receipts were uploaded under `gs://<bucket>/receipts/`.
+
+### Step 1: One-time GCP setup: a signing service account
+
+GCS V4 signed URLs must be signed by a **service account**. User credentials from `gcloud auth application-default login` can read objects but cannot sign. Rather than downloading a key file, create a service account and sign by **impersonating** it:
+
+```bash
+PROJECT=my-project
+BUCKET=my-receipts-bucket
+SA=arize-url-signer@$PROJECT.iam.gserviceaccount.com
+
+# Impersonation-based signing goes through this API
+gcloud services enable iamcredentials.googleapis.com --project $PROJECT
+
+gcloud iam service-accounts create arize-url-signer --project $PROJECT
+
+# The service account can only read the bucket
+gcloud storage buckets add-iam-policy-binding gs://$BUCKET \
+  --member serviceAccount:$SA --role roles/storage.objectViewer
+
+# You (or your CI identity) can sign as the service account
+gcloud iam service-accounts add-iam-policy-binding $SA --project $PROJECT \
+  --member user:you@example.com --role roles/iam.serviceAccountTokenCreator
+```
+
+A signed URL only works if the signer can read the object. The `objectViewer` grant is what makes the link valid.
+
+### Step 2: Sign and create the dataset
+
+[`examples/sign_urls.py`](https://github.com/seanlee10/arize-image-inference/blob/main/examples/sign_urls.py) signs through impersonation:
 
 ```python
+import google.auth
+from google.auth import impersonated_credentials
+from google.cloud import storage
 from datetime import timedelta
 
-SEVEN_DAYS = 7 * 24 * 3600  # the maximum for both GCS V4 and S3 SigV4
-
-def sign_gcs(uri: str, seconds: int = SEVEN_DAYS) -> str:
-    from google.cloud import storage
+def sign_gcs(uri: str, seconds: int = 7 * 24 * 3600, signer: str | None = None) -> str:
+    credentials = None
+    if signer:
+        source, _ = google.auth.default()
+        credentials = impersonated_credentials.Credentials(
+            source_credentials=source,
+            target_principal=signer,
+            target_scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
     bucket, blob = uri.removeprefix("gs://").split("/", 1)
-    return (storage.Client().bucket(bucket).blob(blob)
-            .generate_signed_url(version="v4", expiration=timedelta(seconds=seconds), method="GET"))
+    return (storage.Client(credentials=credentials).bucket(bucket).blob(blob)
+            .generate_signed_url(version="v4", expiration=timedelta(seconds=seconds),
+                                 method="GET", credentials=credentials))
+```
 
-def sign_s3(uri: str, seconds: int = SEVEN_DAYS) -> str:
-    import boto3
-    bucket, key = uri.removeprefix("s3://").split("/", 1)
-    return boto3.client("s3").generate_presigned_url(
-        "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=seconds)
+[`examples/05_create_gcs_dataset.py`](https://github.com/seanlee10/arize-image-inference/blob/main/examples/05_create_gcs_dataset.py) keeps the original URI for reference and puts the signed URL in `image`:
 
-df["image"] = df["gcs_uri"].map(sign_gcs)   # or df["s3_uri"].map(sign_s3)
+```python
+examples.append({
+    "gcs_uri": gcs_uri,                                  # reference only: sent as plain text
+    "image": sign_gcs(gcs_uri, SEVEN_DAYS, signer),      # signed https URL: sent as an image
+    "image_node": json.dumps({"image.url": url}),        # for evaluators (guide 3)
+    ...
+})
 ```
 
 ```console
-$ python sign_urls.py gs://my-bucket/receipts/receipt_01.png
-https://storage.googleapis.com/my-bucket/receipts/receipt_01.png?X-Goog-Algorithm=...&X-Goog-Signature=...
+$ python 05_create_gcs_dataset.py --bucket my-receipts-bucket --prefix receipts/ \
+    --signer arize-url-signer@my-project.iam.gserviceaccount.com
+Created dataset 'receipts-gcs' (RGF0YXNldDozNzA2NTQ6S3JIag==) with 6 examples
+URLs expire in 168 hours; re-run this script to re-sign them.
 ```
 
-Both signers keep the object key, including its `.png`/`.jpg` extension, in the URL path, so the extension rule still holds.
+The row detail view shows the signed URL with the image rendered from it:
+
+![Dataset row with gcs_uri, the signed https URL and the rendered receipt](assets/screenshots/13-gcs-example-detail.png)
+
+The **examples table** shows *"Unable to load image"* for these rows. This is a display limit only: the table cuts cell values to 200 characters, and a V4 signed URL is about 800. The row detail view, the Playground, experiments and evaluators all get the full URL.
+
+### Step 3: Run it: signed URL vs raw `gs://`
+
+**`{image}` (the signed URL):** the model reads every receipt from the private bucket.
+
+![Playground over signed GCS URLs: correct extractions](assets/screenshots/11-playground-gcs-signed.png)
+
+**`{gcs_uri}` (the raw `gs://` URI), same dataset and same bucket:** the model gets text only.
+
+![Playground over raw gs:// URIs: the model says it can't open the path](assets/screenshots/12-playground-gcs-raw-uri.png)
+
+Results on this dataset:
+
+| Path | Result |
+|---|---|
+| Playground, `{image}` | 6/6 correct |
+| Playground, `{gcs_uri}` | 0/6. The model reports it received only text |
+| Server-side experiment ([guide 4](04-experiments-from-code.md)) | total, merchant and date all 6/6 |
+| Image evaluator mapped to `image_node` ([guide 3](03-images-in-evaluators.md)) | 6/6 `correct` |
+
+### Expiry
+
+V4 signed URLs last at most **7 days**. After that, re-runs fail with 400/403 errors from the provider. Re-run `05_create_gcs_dataset.py` to create a fresh dataset, or use base64 if the dataset must stay usable.
+
+### S3
+
+```python
+import boto3
+
+def sign_s3(uri: str, seconds: int = 7 * 24 * 3600) -> str:
+    bucket, key = uri.removeprefix("s3://").split("/", 1)
+    return boto3.client("s3").generate_presigned_url(
+        "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=seconds)
+```
 
 S3 URLs signed with STS or SSO session credentials expire when that session does, which can be well before the 7 days you asked for. Sign with long-lived credentials if you need the full 7 days.
+
+Both signers keep the object key, including its `.png`/`.jpg` extension, in the URL path, so the extension rule still holds.
 
 ## Provider notes
 

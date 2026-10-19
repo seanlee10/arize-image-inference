@@ -11,6 +11,10 @@
 | `400 messages[0].content must be a string` | The model is text-only | [Choose a vision model](#text-only-model) |
 | An LLM judge answers as though there is no image | The evaluator variable is mapped to a bare URL | Map it to an `{"image.url": ...}` column ([guide 3](03-images-in-evaluators.md)) |
 | Worked yesterday, fails today with 403 / "could not download" | A presigned URL expired | Re-sign the URLs, or switch to base64 |
+| The dataset table shows "Unable to load image" for presigned URLs, but the row detail view shows the image | The table cuts cell values to 200 characters, and signed URLs are about 800 | Display only. Inference, experiments and evaluators get the full URL ([guide 2](02-url-images.md#step-2-sign-and-create-the-dataset)) |
+| GCS signing fails: `IAM Service Account Credentials API has not been used ... or it is disabled` | Impersonation signing needs that API | `gcloud services enable iamcredentials.googleapis.com` and wait a minute or two |
+| GCS signing fails with 403 `iam.serviceAccounts.signBlob` | You can't impersonate the signer | Grant yourself `roles/iam.serviceAccountTokenCreator` on the service account |
+| GCS calls fail with `401 HTTP Basic Authentication is not supported` | A `~/.netrc` entry for `storage.googleapis.com` overrides the OAuth token in Python and gcloud | Remove that entry, or run with `NETRC=/dev/null` |
 | A provider 400 error about image size | The image is too large (Anthropic: about 5 MB per image) | Resize before encoding ([guide 1](01-base64-images.md#step-1-encode-the-images-as-data-uris)) |
 | "Invalid image URL format for Anthropic model. Please use a base64 data URL instead" | Bedrock with IAM/access-key auth running Claude accepts only base64 PNG/JPEG | Use base64 PNG or JPEG |
 | The image is ignored when it sits in a system message | Images are only taken from **user** messages | Move `{image}` into a user message |

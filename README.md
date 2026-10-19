@@ -11,7 +11,7 @@ Every screenshot and code sample comes from a working run against a real Arize s
 | # | Guide | What it covers |
 |---|---|---|
 | 1 | [Base64 images](01-base64-images.md) | Encoding local or private images into the dataset, then running them in the Playground |
-| 2 | [URL images](02-url-images.md) | https image links, presigned GCS/S3 URLs, and why `gs://` / `s3://` don't work |
+| 2 | [URL images](02-url-images.md) | https image links, an end-to-end walkthrough with a **private GCS bucket** (presigned URLs), and why `gs://` / `s3://` don't work |
 | 3 | [Images in evaluators](03-images-in-evaluators.md) | LLM-as-judge evaluators that look at the image, which need a different column format |
 | 4 | [Experiments from code](04-experiments-from-code.md) | Running image experiments from Python, either server-side through an Arize AI integration or locally with your own task |
 | 5 | [Troubleshooting](05-troubleshooting.md) | Symptoms, causes and fixes |
@@ -50,7 +50,7 @@ The value counts as an image if it has one of these two forms:
 | | Base64 | https URL |
 |---|---|---|
 | Private images | ✅ The data is in the row | ⚠️ Needs a presigned URL, which expires |
-| Dataset size | Large: about 1.33× the image bytes per row | Small |
+| Dataset size | Large. Each row stores the whole image as text, and base64 text is about 33% bigger than the file (a 300 KB photo becomes about 400 KB) | Small. Each row stores only a link |
 | Thumbnails in Arize | ✅ | ✅ |
 | Re-run months later | ✅ | Only if the URL still works |
 
