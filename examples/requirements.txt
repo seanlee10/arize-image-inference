@@ -1,0 +1,4 @@
+arize>=8.56
+openai>=1.40
+pandas
+pillow>=10.1
